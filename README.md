@@ -1,1 +1,3 @@
-# Odin4-GUI-
+Please note that I am not responsible for any issues, bugs, or damage that may occur while using this code. The flashing process can potentially harm your device or cause data loss. Please ensure that you are fully aware of the risks involved and have taken necessary precautions (e.g., backups, using a test device). If you encounter any problems or errors, you are solely responsible for troubleshooting and resolving them.
+
+By using this code, you acknowledge that you are doing so at your own risk, and I cannot be held accountable for any harm that may come to your device or data during the flashing process
