@@ -2,9 +2,11 @@ import sys
 import subprocess
 import threading
 import time
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QComboBox, QPushButton, 
-                             QFileDialog, QMessageBox, QProgressBar, QCheckBox, QVBoxLayout, 
-                             QHBoxLayout, QWidget, QFrame)
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QLabel, QComboBox, QPushButton,
+    QFileDialog, QMessageBox, QProgressBar, QCheckBox, QVBoxLayout,
+    QHBoxLayout, QWidget, QFrame, QLineEdit  
+)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import serial.tools.list_ports
 
@@ -175,12 +177,21 @@ class FlashThread(QThread):
                 seconds = remaining_time % 60
                 self.parent.remaining_time_label.setText(f"Time Remaining: {minutes:02}:{seconds:02}")
 
-                self.parent.progress_bar.setValue(progress_step * (i + 1))
+                
+                self.parent.progress_bar.setValue(int(progress_step * (i + 1)))
                 time.sleep(2)
 
+            
             if self.parent.reboot_var.isChecked():
+                print("Executing reboot command...")
                 reboot_command = ["Odin/odin", "-d", com_port, "--reboot"]
                 subprocess.run(reboot_command, check=True)
+            else:
+                print("Reboot skipped. Device not restarted.")
+
+           
+            time.sleep(5)  # 
+            print("Connection closed.")
 
             self.finished.emit(True, "Flashing completed successfully!")
         except Exception as e:
