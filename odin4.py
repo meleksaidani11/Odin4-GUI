@@ -1,16 +1,19 @@
-import customtkinter as ctk
+import sys
 import subprocess
 import threading
-from tkinter import filedialog, messagebox
-import serial.tools.list_ports
 import time
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QComboBox, QPushButton, 
+                             QFileDialog, QMessageBox, QProgressBar, QCheckBox, QVBoxLayout, 
+                             QHBoxLayout, QWidget, QFrame)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+import serial.tools.list_ports
 
-class FlashToolApp:
+class FlashToolApp(QMainWindow):
     def __init__(self):
-        self.root = ctk.CTk()
-        self.root.geometry("800x510")
-        self.root.title("Odin4 Download Tool")
-        
+        super().__init__()
+        self.setWindowTitle("Odin4 Download Tool")
+        self.setGeometry(100, 100, 800, 510)
+
         self.file_inputs = {
             "BL File": None,
             "AP File": None,
@@ -19,81 +22,84 @@ class FlashToolApp:
             "UMS File": None,
         }
 
-        self.create_ui()
+        self.init_ui()
 
         self.device_thread = threading.Thread(target=self.detect_devices_periodically, daemon=True)
         self.device_thread.start()
 
-    def create_ui(self):
-        title_label = ctk.CTkLabel(self.root, text="Odin4 Download Tool", font=("Arial", 18, "bold"))
-        title_label.pack(pady=10)
+    def init_ui(self):
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        layout = QVBoxLayout(main_widget)
 
-        com_frame = ctk.CTkFrame(self.root)
-        com_frame.pack(pady=20)
+        title_label = QLabel("Odin4 Download Tool")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(title_label, alignment=Qt.AlignCenter)
 
-        self.com_label = ctk.CTkLabel(com_frame, text="Device (COM Port):", font=("Arial", 12))
-        self.com_label.pack(side="left", padx=10)
+        com_frame = QFrame()
+        com_layout = QHBoxLayout(com_frame)
+        self.com_label = QLabel("Device (COM Port):")
+        self.com_dropdown = QComboBox()
+        self.com_dropdown.addItem("No device detected")
+        self.com_dropdown.setFixedWidth(300)
+        com_layout.addWidget(self.com_label)
+        com_layout.addWidget(self.com_dropdown)
+        layout.addWidget(com_frame)
 
-        self.com_dropdown = ctk.CTkComboBox(com_frame, values=["No device detected"], width=300, height=30)
-        self.com_dropdown.pack(side="left", padx=12)
-
-        files_frame = ctk.CTkFrame(self.root)
-        files_frame.pack(pady=20)
-
+        files_frame = QFrame()
+        files_layout = QVBoxLayout(files_frame)
         for label in self.file_inputs:
-            self.create_file_input(label, files_frame)
+            self.create_file_input(label, files_layout)
+        layout.addWidget(files_frame)
 
-        options_frame = ctk.CTkFrame(self.root)
-        options_frame.pack(pady=10)
+        options_frame = QFrame()
+        options_layout = QHBoxLayout(options_frame)
+        self.nand_erase_var = QCheckBox("NAND Erase")
+        self.reboot_var = QCheckBox("Reboot After Flash")
+        self.reboot_var.setChecked(True)
+        options_layout.addWidget(self.nand_erase_var)
+        options_layout.addWidget(self.reboot_var)
+        flash_button = QPushButton("Flash")
+        flash_button.clicked.connect(self.start_flashing)
+        flash_button.setFixedWidth(200)
+        options_layout.addWidget(flash_button)
+        layout.addWidget(options_frame)
 
-        self.nand_erase_var = ctk.BooleanVar()
-        self.reboot_var = ctk.BooleanVar(value=False)
+        progress_frame = QFrame()
+        progress_layout = QHBoxLayout(progress_frame)
+        self.progress_label = QLabel("Progress:")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedWidth(300)
+        progress_layout.addWidget(self.progress_label)
+        progress_layout.addWidget(self.progress_bar)
+        layout.addWidget(progress_frame)
 
-        ctk.CTkCheckBox(options_frame, text="NAND Erase", variable=self.nand_erase_var, font=("Arial", 12)).pack(side="left", padx=10)
-        ctk.CTkCheckBox(options_frame, text="Reboot After Flash", variable=self.reboot_var, font=("Arial", 12)).pack(side="left", padx=10)
+        info_frame = QFrame()
+        info_layout = QHBoxLayout(info_frame)
+        self.remaining_time_label = QLabel("Time Remaining: 00:00")
+        self.current_file_label = QLabel("Current File: None")
+        info_layout.addWidget(self.remaining_time_label)
+        info_layout.addWidget(self.current_file_label)
+        layout.addWidget(info_frame)
 
-        flash_button = ctk.CTkButton(options_frame, text="Flash", command=self.start_flashing, width=200)
-        flash_button.pack(side="left", padx=10)
-
-        progress_frame = ctk.CTkFrame(self.root)
-        progress_frame.pack(pady=10)
-
-        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress:", font=("Arial", 14))
-        self.progress_label.pack(side="left", padx=10)
-
-        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=300)
-        self.progress_bar.pack(side="left", padx=10)
-        self.progress_bar.set(0)
-
-        info_frame = ctk.CTkFrame(self.root)
-        info_frame.pack(pady=10)
-
-        self.remaining_time_label = ctk.CTkLabel(info_frame, text="Time Remaining: 00:00", font=("Arial", 12))
-        self.remaining_time_label.pack(side="left", padx=10)
-
-        self.current_file_label = ctk.CTkLabel(info_frame, text="Current File: None", font=("Arial", 12))
-        self.current_file_label.pack(side="left", padx=10)
-
-    def create_file_input(self, label, parent_frame):
-        frame = ctk.CTkFrame(parent_frame)
-        frame.pack(pady=5, fill="x", padx=20)
-
-        label_widget = ctk.CTkLabel(frame, text=label, anchor="w", font=("Arial", 12))
-        label_widget.pack(side="left", padx=10)
-
-        entry = ctk.CTkEntry(frame, width=300, height=30)
-        entry.pack(side="left", padx=10)
-
-        button = ctk.CTkButton(frame, text="Browse", command=lambda: self.browse_file(entry), width=100)
-        button.pack(side="left", padx=10)
-
+    def create_file_input(self, label, parent_layout):
+        frame = QFrame()
+        frame_layout = QHBoxLayout(frame)
+        label_widget = QLabel(label)
+        entry = QLineEdit()
+        entry.setFixedWidth(300)
+        browse_button = QPushButton("Browse")
+        browse_button.clicked.connect(lambda: self.browse_file(entry))
+        frame_layout.addWidget(label_widget)
+        frame_layout.addWidget(entry)
+        frame_layout.addWidget(browse_button)
+        parent_layout.addWidget(frame)
         self.file_inputs[label] = entry
 
     def browse_file(self, entry):
-        file_path = filedialog.askopenfilename(filetypes=[("All Files", "*.*")])
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*.*)")
         if file_path:
-            entry.delete(0, "end")
-            entry.insert(0, file_path)
+            entry.setText(file_path)
 
     def detect_devices(self):
         try:
@@ -105,13 +111,13 @@ class FlashToolApp:
                 devices.append(device_info)
 
             if devices:
-                self.com_dropdown.configure(values=devices)
-                self.com_dropdown.set(devices[0])
+                self.com_dropdown.clear()
+                self.com_dropdown.addItems(devices)
             else:
-                self.com_dropdown.configure(values=["No device detected"])
-                self.com_dropdown.set("No device detected")
+                self.com_dropdown.clear()
+                self.com_dropdown.addItem("No device detected")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to detect devices: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to detect devices: {e}")
 
     def detect_devices_periodically(self):
         while True:
@@ -119,56 +125,69 @@ class FlashToolApp:
             time.sleep(2)
 
     def start_flashing(self):
-        threading.Thread(target=self.flash_device).start()
+        self.flash_thread = FlashThread(self)
+        self.flash_thread.finished.connect(self.on_flash_finished)
+        self.flash_thread.start()
 
-    def flash_device(self):
-        selected_device = self.com_dropdown.get()
+    def on_flash_finished(self, success, message):
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+
+class FlashThread(QThread):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+
+    def run(self):
+        selected_device = self.parent.com_dropdown.currentText()
         if selected_device == "No device detected":
-            messagebox.showerror("Error", "No device selected!")
+            self.finished.emit(False, "No device selected!")
             return
 
         com_port = selected_device.split(" - ")[0]
 
         flash_files = []
-        for label, entry in self.file_inputs.items():
-            file_path = entry.get()
+        for label, entry in self.parent.file_inputs.items():
+            file_path = entry.text()
             if file_path:
                 flash_files.append((label, file_path))
 
         total_files = len(flash_files)
         if total_files == 0:
-            messagebox.showerror("Error", "No files selected for flashing!")
+            self.finished.emit(False, "No files selected for flashing!")
             return
 
-        self.progress_bar.set(0)
-        progress_step = 1 / total_files
+        self.parent.progress_bar.setValue(0)
+        progress_step = 100 / total_files
 
         try:
             for i, (label, file_path) in enumerate(flash_files):
-                self.current_file_label.configure(text=f"Current File: {label} ({file_path})")
+                self.parent.current_file_label.setText(f"Current File: {label} ({file_path})")
                 command = ["Odin/odin", "-a", file_path, "-d", com_port]
                 subprocess.run(command, check=True)
 
                 remaining_time = (total_files - i - 1) * 5
                 minutes = remaining_time // 60
                 seconds = remaining_time % 60
-                self.remaining_time_label.configure(text=f"Time Remaining: {minutes:02}:{seconds:02}")
+                self.parent.remaining_time_label.setText(f"Time Remaining: {minutes:02}:{seconds:02}")
 
-                self.progress_bar.set(progress_step * (i + 1))
+                self.parent.progress_bar.setValue(progress_step * (i + 1))
                 time.sleep(2)
 
-            if self.reboot_var.get():
+            if self.parent.reboot_var.isChecked():
                 reboot_command = ["Odin/odin", "-d", com_port, "--reboot"]
                 subprocess.run(reboot_command, check=True)
 
-            messagebox.showinfo("Success", "Flashing completed successfully!")
+            self.finished.emit(True, "Flashing completed successfully!")
         except Exception as e:
-            messagebox.showerror("Error", f"Flashing failed: {e}")
-
-    def run(self):
-        self.root.mainloop()
-
+            self.finished.emit(False, f"Flashing failed: {e}")
 
 if __name__ == "__main__":
-    app = FlashToolApp()
-    app.run()
+    app = QApplication(sys.argv)
+    window = FlashToolApp()
+    window.show()
+    sys.exit(app.exec_())
